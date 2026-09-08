@@ -1,0 +1,100 @@
+name: tempodeck
+description: Professional metronome app for iOS, Android, macOS, and Windows.
+publish_to: none
+version: 2.1.0+8
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.3.5
+
+  # Navigation
+  go_router: ^14.6.3
+
+  # Database
+  drift: ^2.23.1
+  drift_flutter: ^0.2.4
+  sqlite3_flutter_libs: ^0.5.28
+
+  # Audio
+  flutter_soloud: ^3.3.1
+  flutter_tts: ^4.2.0
+  ffmpeg_kit_audio_flutter: ^1.1.0
+  audio_session: ^0.2.2
+
+  # Storage
+  shared_preferences: ^2.3.4
+
+  # File handling
+  file_picker: ^8.3.7
+  path: ^1.9.1
+  path_provider: ^2.1.5
+
+  # Utilities
+  uuid: ^4.5.1
+  logging: ^1.3.0
+  package_info_plus: ^9.0.0
+
+  # JSON
+  json_annotation: ^4.9.0
+  share_plus: ^12.0.1
+  flutter_foreground_task: ^9.2.1
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  fake_async: ^1.3.1
+  build_runner: ^2.4.15
+  riverpod_generator: ^2.4.4
+  drift_dev: ^2.23.1
+  json_serializable: ^6.9.4
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  macos:
+    generate: true
+  windows:
+    generate: true
+  image_path: "assets/icon/app_icon_1024.png"
+  adaptive_icon_background: "#0A0A0F"
+  adaptive_icon_foreground: "assets/icon/app_icon_1024.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/audio/click_kits/tock/
+    - assets/audio/click_kits/blip/
+    - assets/audio/click_kits/drum_kit/
+    - assets/audio/click_kits/hype/
+    - assets/audio/click_kits/metal_kit/
+    - assets/audio/click_kits/mighty_kit/
+    - assets/images/
+  fonts:
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/JetBrainsMono-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700
+    - family: Outfit
+      fonts:
+        - asset: assets/fonts/Outfit-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Outfit-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Outfit-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Outfit-Bold.ttf
+          weight: 700
