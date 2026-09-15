@@ -8,6 +8,10 @@ performance mode.
   <img src="assets/images/splash_logo_2x.png" alt="TempoDeck" width="180" />
 </p>
 
+<p align="center">
+  ☕ Enjoying TempoDeck or its code? Feel free to <a href="https://ko-fi.com/s3gvdev">buy me a coffee on Ko-fi</a> — no perks, no strings, just a small thank-you.
+</p>
+
 ## Why this exists
 
 TempoDeck started as a paid app for practicing musicians. When the commercial
