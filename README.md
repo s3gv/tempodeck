@@ -201,6 +201,13 @@ build otherwise runs sandboxed against the local certificate. Notarization
 for distribution outside the App Store is a manual `notarytool` step and
 not covered here.
 
+> **The macOS build is a local-only build, by design.** It is not part of CI.
+> `ffmpeg_kit_audio_flutter` declares macOS in its plugin platforms but the
+> published package ships no `macos/` directory, so `pod install` finds no
+> podspec on a clean checkout and CI cannot build the app. Audio export on
+> desktop doesn't use that plugin anyway — it shells out to the `ffmpeg`
+> binary installed on the machine.
+
 ### 5. Windows (Desktop)
 
 Requirements:
@@ -227,8 +234,12 @@ run — copy the entire folder when distributing.
 
 ```bash
 flutter analyze          # zero warnings expected
-flutter test             # ~600 tests, mostly unit + widget
+flutter test             # ~630 tests, mostly unit + widget
 ```
+
+CI runs both on every push and pull request, on a macOS runner — parts of the
+suite exercise the real audio engine, and `flutter_soloud` ships no prebuilt
+library for Linux.
 
 ## Contributing
 
