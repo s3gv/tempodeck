@@ -8,7 +8,9 @@ on:
 jobs:
   analyze-and-test:
     name: Analyze & test
-    runs-on: ubuntu-latest
+    # macOS, not Linux: parts of the suite touch the real audio engine, and
+    # flutter_soloud ships no prebuilt library for Linux.
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +33,7 @@ jobs:
       - name: Run tests
         run: flutter test
 
-  # A macOS build job would be the natural place to compile the Swift runner,
-  # but `pod install` currently fails for macOS: ffmpeg_kit_audio_flutter
+  # Building the macOS app (and with it the Swift runner) would be the natural
+  # next job, but `pod install` currently fails for macOS: ffmpeg_kit_audio_flutter
   # declares macOS support in its pubspec while shipping no macos/ directory,
   # so CocoaPods finds no podspec. See the notes in the pull request.
