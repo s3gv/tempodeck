@@ -86,8 +86,15 @@ class AudioDurationReader {
     }
   }
 
-  /// Estimate MP3 duration from file size and first frame bitrate.
-  /// This is approximate but good enough for waveform offset calculation.
+  /// Read MP3 duration.
+  ///
+  /// Prefers the frame count from a Xing/Info or VBRI header, which is the
+  /// only accurate source for variable-bitrate files — estimating from the
+  /// first frame's bitrate assumes every frame uses that bitrate and can be
+  /// off by a wide margin on VBR material.
+  ///
+  /// Files without such a header are plain CBR, where the size estimate is
+  /// accurate enough for waveform offset calculation.
   Future<Duration?> _readMp3Duration(File file) async {
     try {
       final raf = await file.open(mode: FileMode.read);
@@ -122,12 +129,34 @@ class AudioDurationReader {
 
         if (frameOffset == null) return null;
 
-        final frameHeader = searchBuffer.sublist(frameOffset, frameOffset + 4);
-        final bitrate = _mp3Bitrate(frameHeader);
+        // Read the whole first frame header area, including the side
+        // information a Xing/VBRI header hides behind.
+        final frameStart = dataStart + frameOffset;
+        await raf.setPosition(frameStart);
+        final frame = await raf.read(_mp3FrameProbeSize);
+        if (frame.length < 4) return null;
+
+        final frameCount = _mp3VbrFrameCount(frame);
+        if (frameCount != null && frameCount > 0) {
+          final sampleRate = _mp3SampleRate(frame);
+          final samplesPerFrame = _mp3SamplesPerFrame(frame);
+          if (sampleRate != null && samplesPerFrame != null) {
+            final durationMs =
+                (frameCount * samplesPerFrame * 1000 / sampleRate).round();
+            return Duration(milliseconds: durationMs);
+          }
+        }
+
+        final bitrate = _mp3Bitrate(frame);
         if (bitrate == null || bitrate == 0) return null;
 
         final fileSize = await file.length();
-        final audioSize = fileSize - dataStart;
+        // An ID3v1 tag is 128 bytes of metadata at the very end — counting it
+        // as audio makes short files measurably too long.
+        final audioSize =
+            fileSize - frameStart - await _id3v1TagSize(raf, fileSize);
+        if (audioSize <= 0) return null;
+
         final durationMs = (audioSize * 8 / (bitrate * 1000) * 1000).round();
         return Duration(milliseconds: durationMs);
       } finally {
@@ -136,6 +165,104 @@ class AudioDurationReader {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Bytes read from the first frame — enough for the frame header, the side
+  /// information, and a Xing/Info or VBRI header behind it.
+  static const int _mp3FrameProbeSize = 200;
+
+  /// Size of a trailing ID3v1 tag, or 0 when the file has none.
+  Future<int> _id3v1TagSize(RandomAccessFile raf, int fileSize) async {
+    if (fileSize < 128) return 0;
+    await raf.setPosition(fileSize - 128);
+    final tail = await raf.read(3);
+    if (tail.length < 3) return 0;
+    final isId3v1 = tail[0] == 0x54 && tail[1] == 0x41 && tail[2] == 0x47;
+    return isId3v1 ? 128 : 0;
+  }
+
+  /// Total frame count from a Xing/Info or VBRI header, or `null` when the
+  /// frame carries neither (a plain constant-bitrate file).
+  int? _mp3VbrFrameCount(List<int> frame) {
+    if (frame.length < 4) return null;
+
+    final version = (frame[1] >> 3) & 0x03; // 11 = MPEG 1
+    final channelMode = (frame[3] >> 6) & 0x03; // 11 = mono
+    final isMono = channelMode == 0x03;
+
+    // Xing/Info sits right behind the side information, whose size depends on
+    // MPEG version and channel mode.
+    final int xingOffset;
+    if (version == 0x03) {
+      xingOffset = isMono ? 21 : 36;
+    } else {
+      xingOffset = isMono ? 13 : 21;
+    }
+
+    if (frame.length >= xingOffset + 12) {
+      final tag = String.fromCharCodes(
+        frame.sublist(xingOffset, xingOffset + 4),
+      );
+      if (tag == 'Xing' || tag == 'Info') {
+        final data = ByteData.sublistView(Uint8List.fromList(frame));
+        final flags = data.getUint32(xingOffset + 4);
+        // Bit 0 marks the frame count field, which directly follows the flags.
+        if (flags & 0x01 != 0) {
+          return data.getUint32(xingOffset + 8);
+        }
+        return null;
+      }
+    }
+
+    // VBRI (Fraunhofer encoders) always sits 32 bytes behind the frame header.
+    const vbriOffset = 36;
+    if (frame.length >= vbriOffset + 18) {
+      final tag = String.fromCharCodes(
+        frame.sublist(vbriOffset, vbriOffset + 4),
+      );
+      if (tag == 'VBRI') {
+        final data = ByteData.sublistView(Uint8List.fromList(frame));
+        return data.getUint32(vbriOffset + 14);
+      }
+    }
+
+    return null;
+  }
+
+  /// Sample rate in Hz from an MP3 frame header.
+  int? _mp3SampleRate(List<int> header) {
+    if (header.length < 4) return null;
+
+    final version = (header[1] >> 3) & 0x03;
+    final index = (header[2] >> 2) & 0x03;
+    if (index == 0x03) return null; // reserved
+
+    const mpeg1 = [44100, 48000, 32000];
+    const mpeg2 = [22050, 24000, 16000];
+    const mpeg25 = [11025, 12000, 8000];
+
+    return switch (version) {
+      0x03 => mpeg1[index],
+      0x02 => mpeg2[index],
+      0x00 => mpeg25[index],
+      _ => null, // 01 = reserved
+    };
+  }
+
+  /// Samples encoded in one frame — the other half of the duration formula.
+  int? _mp3SamplesPerFrame(List<int> header) {
+    if (header.length < 4) return null;
+
+    final version = (header[1] >> 3) & 0x03;
+    final layer = (header[1] >> 1) & 0x03; // 01 = III, 10 = II, 11 = I
+    final isMpeg1 = version == 0x03;
+
+    return switch (layer) {
+      0x01 => isMpeg1 ? 1152 : 576, // Layer III
+      0x02 => 1152, // Layer II
+      0x03 => 384, // Layer I
+      _ => null, // 00 = reserved
+    };
   }
 
   /// Decode bitrate from MP3 frame header (MPEG 1 Layer 3).

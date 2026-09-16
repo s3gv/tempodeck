@@ -15,6 +15,11 @@ class AppDelegate: FlutterAppDelegate {
   // resources and the SQLite database before the process exits. Without
   // this, the Dart VM cleanup races with FFI callback threads, causing
   // macOS to show the "TempoDeck quit unexpectedly" crash dialog.
+  /// Guards `reply(toApplicationShouldTerminate:)` — whichever of the Dart
+  /// callback and the safety timeout comes first wins, the other is a no-op.
+  /// Replying twice for one termination request is undefined behaviour.
+  private var hasRepliedToTerminate = false
+
   override func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     // Send a shutdown signal to Dart via a method channel, then wait
     // for dispose to complete before allowing termination.
@@ -23,17 +28,24 @@ class AppDelegate: FlutterAppDelegate {
         name: "com.tempodeck.app/lifecycle",
         binaryMessenger: controller.engine.binaryMessenger
       )
-      channel.invokeMethod("shutdown", arguments: nil) { _ in
-        // Dart dispose completed (or timed out) — allow termination.
-        sender.reply(toApplicationShouldTerminate: true)
+      channel.invokeMethod("shutdown", arguments: nil) { [weak self] _ in
+        // Dart dispose completed — allow termination.
+        self?.replyToTerminateOnce(sender)
       }
       // Safety timeout: terminate after 2 seconds regardless.
-      DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-        sender.reply(toApplicationShouldTerminate: true)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+        self?.replyToTerminateOnce(sender)
       }
     } else {
       return .terminateNow
     }
     return .terminateLater
+  }
+
+  /// Both callers run on the main thread, so the flag needs no extra locking.
+  private func replyToTerminateOnce(_ sender: NSApplication) {
+    guard !hasRepliedToTerminate else { return }
+    hasRepliedToTerminate = true
+    sender.reply(toApplicationShouldTerminate: true)
   }
 }
